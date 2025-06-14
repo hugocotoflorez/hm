@@ -1,0 +1,26 @@
+
+=================================================================
+==9861==ERROR: LeakSanitizer: detected memory leaks
+
+Direct leak of 64 byte(s) in 2 object(s) allocated from:
+    #0 0x7c7e1d320e15 in malloc /usr/src/debug/gcc/gcc/libsanitizer/asan/asan_malloc_linux.cpp:67
+    #1 0x5fb829909e1e in new_entry /home/hugo/code/hm/hm.c:92
+    #2 0x5fb82990b482 in hm_insert /home/hugo/code/hm/hm.c:194
+    #3 0x5fb82990bda4 in test_single_insert /home/hugo/code/hm/hm.c:236
+    #4 0x5fb82990c32c in main /home/hugo/code/hm/hm.c:266
+    #5 0x7c7e1c8376b4  (/usr/lib/libc.so.6+0x276b4) (BuildId: 468e3585c794491a48ea75fceb9e4d6b1464fc35)
+    #6 0x7c7e1c837768 in __libc_start_main (/usr/lib/libc.so.6+0x27768) (BuildId: 468e3585c794491a48ea75fceb9e4d6b1464fc35)
+    #7 0x5fb829909244 in _start (/home/hugo/code/hm/a.out+0x5244) (BuildId: 35537c32e30cf60dee2ef52c030595e02b7c3d45)
+
+Direct leak of 32 byte(s) in 1 object(s) allocated from:
+    #0 0x7c7e1d320e15 in malloc /usr/src/debug/gcc/gcc/libsanitizer/asan/asan_malloc_linux.cpp:67
+    #1 0x5fb829909e1e in new_entry /home/hugo/code/hm/hm.c:92
+    #2 0x5fb82990b482 in hm_insert /home/hugo/code/hm/hm.c:194
+    #3 0x5fb82990b89b in hm_insert /home/hugo/code/hm/hm.c:204
+    #4 0x5fb82990bda4 in test_single_insert /home/hugo/code/hm/hm.c:236
+    #5 0x5fb82990c32c in main /home/hugo/code/hm/hm.c:266
+    #6 0x7c7e1c8376b4  (/usr/lib/libc.so.6+0x276b4) (BuildId: 468e3585c794491a48ea75fceb9e4d6b1464fc35)
+    #7 0x7c7e1c837768 in __libc_start_main (/usr/lib/libc.so.6+0x27768) (BuildId: 468e3585c794491a48ea75fceb9e4d6b1464fc35)
+    #8 0x5fb829909244 in _start (/home/hugo/code/hm/a.out+0x5244) (BuildId: 35537c32e30cf60dee2ef52c030595e02b7c3d45)
+
+SUMMARY: AddressSanitizer: 96 byte(s) leaked in 3 allocation(s).
