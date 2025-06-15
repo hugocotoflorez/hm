@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <unistd.h>
 
 /* No direct dependency, just for test */
 #include "frog/frog.h"
@@ -11,6 +13,7 @@ typedef struct Entry {
         char *key;
         void *value;
         struct Entry *next;
+        struct Entry *prev;
 } Entry;
 
 typedef struct HM {
@@ -34,7 +37,7 @@ void hm_insert(HM *hm, char *key, void *value);
 void *hm_get(HM hm, char *key);
 
 /* Remove the value from hm `hm` at key `key` */
-// void *hm_remove(HM hm, char *key);
+void hm_remove(HM *hm, char *key);
 
 /* Remove all data and set `hm` to empty */
 void hm_destroy(HM *hm);
@@ -96,6 +99,7 @@ new_entry(int d)
                 .key = NULL,
                 .value = NULL,
                 .next = NULL,
+                .prev = NULL,
         };
         return e;
 }
@@ -158,6 +162,7 @@ hm_insert(HM *hm, char *key, void *value)
                 e->next = new_entry(e->d);
                 e->next->key = strdup(key);
                 e->next->value = value;
+                e->next->prev = e;
                 // print_table(*hm);
                 return;
         }
@@ -198,16 +203,48 @@ hm_insert(HM *hm, char *key, void *value)
         }
 }
 
-void *
-hm_get(HM hm, char *key)
+static void *
+hm_get_entry(HM hm, char *key)
 {
         int hash = hm.hash(key, hm.d);
         Entry *e = hm.entries[hash];
         while (e) {
-                if (strcmp(key, e->key) == 0) return e->value;
+                if (e->key && strcmp(key, e->key) == 0) return e;
                 e = e->next;
         }
         return NULL;
+}
+
+void *
+hm_get(HM hm, char *key)
+{
+        Entry *e = hm_get_entry(hm, key);
+        return e ? e->value : NULL;
+}
+
+void
+hm_remove(HM *hm, char *key)
+{
+        Entry *e = hm_get_entry(*hm, key);
+        if (e == NULL) return;
+        free(e->key);
+
+        if (e->prev) {
+                e->prev->next = e->next;
+                if (e->next) e->next->prev = e->prev;
+                free(e);
+                return;
+        }
+        if (e->next) {
+                Entry *n = e->next;
+                e->key = n->key;
+                e->value = n->value;
+                e->next = n->next;
+                if (e->next) e->next->prev = e;
+                free(n);
+                return;
+        }
+        e->key = NULL;
 }
 
 static void
@@ -224,6 +261,27 @@ test_single_insert(HM *hm, char *key, char *value)
         }
         da_append(&alloc_list, key);
         da_append(&alloc_list, value);
+}
+
+static void
+test_single_remove(HM *hm)
+{
+        static int t = 0;
+        int i = (rand() % alloc_list.size);
+        i -= i % 2;
+        char *key = alloc_list.data[i];
+        char *value = alloc_list.data[i + 1];
+        char *val;
+        ++t;
+        hm_remove(hm, key);
+        if ((val = hm_get(*hm, key)) != NULL) {
+                printf("Test %d failed:\n", t);
+                printf("  hm_remove(hm, `%s`) does not remove `%s`\n", key, key);
+        }
+        free(key);
+        free(value);
+        da_remove(&alloc_list, i);
+        da_remove(&alloc_list, i);
 }
 
 static char *
@@ -246,9 +304,12 @@ main(void)
         srand(time(0));
         for (i = 0; i < 256; i++)
                 test_single_insert(&hm, random_word(8), random_word(8));
+        while (alloc_list.size) {
+                test_single_remove(&hm);
+        }
 
         hm_destroy(&hm);
-        for_da_each(ptr, alloc_list) free(*ptr);
+        // for_da_each(ptr, alloc_list) free(*ptr);
         da_destroy(&alloc_list);
         return 0;
 }
