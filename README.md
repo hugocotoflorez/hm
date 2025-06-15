@@ -13,7 +13,7 @@ void hm_remove(HM *hm, char *key);
 void hm_destroy(HM *hm);
 ```
 
-## DESCRYPTION
+## DESCRIPTION
 
 Hash map implementation. The functions declared above should provide
 the functionality needed to use a hash map.
