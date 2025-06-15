@@ -1,12 +1,21 @@
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
 
-/* No direct dependency, just for test */
 #include "frog/frog.h"
+
+/* not defined in c99 */
+#ifndef strdup
+#define strdup(s) ({                        \
+        void *p = calloc(1, strlen(s) + 1); \
+        strcat(p, s);                       \
+        p;                                  \
+})
+#endif
 
 typedef struct Entry {
         int d;
@@ -23,10 +32,10 @@ typedef struct HM {
 } HM;
 
 #define HM_INIT_SIZE 1
-#define HASH_MAX_BITS 16
+#define HASH_MAX_BITS 12
 
-typedef DA(void *) ptr_da;
-ptr_da alloc_list = { 0 };
+DA(void *)
+alloc_list = { 0 };
 
 /* -- Public Functions -- */
 
@@ -75,17 +84,39 @@ hm_destroy(HM *hm)
         hm->entries = NULL;
 }
 
+static inline int
+rotl(int x, int r)
+{
+        return (x << r) | (x >> (sizeof(int) * 8 - r));
+}
+
 static int
 hm_hash(char *key, int bits)
 {
-        /* Just lineal hashing, to be improved */
-        int h = 0;
-        char *c;
-        for (c = key; *c != 0; c++) {
-                h *= 31;
-                h = ~h;
-                h ^= *c;
+        /* some fast hash implementation with low collision */
+        int h = 0x165667B1U;
+        int len = strlen(key);
+        h += len;
+        int i = 0;
+        while (i + 4 <= len) {
+                int k = *(int *) (key + i);
+                k *= 0xC2B2AE3DU;
+                k = rotl(k, 17);
+                k *= 0x27D4EB2FU;
+                h ^= k;
+                h = rotl(h, 17) * 0x9E3779B1U + 0x27D4EB2FU;
+                i += 4;
         }
+        while (i < len) {
+                h += key[i] * 0x165667B1U;
+                h = rotl(h, 11) * 0x9E3779B1U;
+                i++;
+        }
+        h ^= h >> 15;
+        h *= 0x85EBCA77U;
+        h ^= h >> 13;
+        h *= 0xC2B2AE3DU;
+        h ^= h >> 16;
         return h & (two_pow(bits < HASH_MAX_BITS ? bits : HASH_MAX_BITS) - 1);
 }
 
@@ -93,14 +124,11 @@ static Entry *
 new_entry(int d)
 {
         Entry *e = malloc(sizeof(Entry));
-        assert(e);
-        *e = (Entry) {
-                .d = d,
-                .key = NULL,
-                .value = NULL,
-                .next = NULL,
-                .prev = NULL,
-        };
+        e->d = d;
+        e->key = NULL;
+        e->value = NULL;
+        e->next = NULL;
+        e->prev = NULL;
         return e;
 }
 
@@ -131,7 +159,6 @@ hm_grow(HM *hm)
                         hm->entries[i] = new_entry(1);
                 return hm;
         }
-
         hm->d++;
         hm->entries = realloc(hm->entries, two_pow(hm->d) * sizeof(Entry *));
         memcpy(hm->entries + two_pow(hm->d - 1),
@@ -150,7 +177,6 @@ hm_insert(HM *hm, char *key, void *value)
         if (hm->entries[hash]->key == NULL) {
                 hm->entries[hash]->key = strdup(key);
                 hm->entries[hash]->value = value;
-                // print_table(*hm);
                 return;
         }
 
@@ -163,7 +189,6 @@ hm_insert(HM *hm, char *key, void *value)
                 e->next->key = strdup(key);
                 e->next->value = value;
                 e->next->prev = e;
-                // print_table(*hm);
                 return;
         }
 
@@ -245,6 +270,7 @@ hm_remove(HM *hm, char *key)
                 return;
         }
         e->key = NULL;
+        e->value = NULL;
 }
 
 static void
@@ -299,17 +325,18 @@ int
 main(void)
 {
         HM hm = { 0 };
-
-        int i;
+        unsigned int i;
+        int iters = 1;
         srand(time(0));
-        for (i = 0; i < 256; i++)
-                test_single_insert(&hm, random_word(8), random_word(8));
-        while (alloc_list.size) {
-                test_single_remove(&hm);
+        for (; iters--;) {
+                for (i = 0; i < 0x1 << HASH_MAX_BITS; i++)
+                        test_single_insert(&hm, random_word(8), random_word(8));
+                while (alloc_list.size) {
+                        test_single_remove(&hm);
+                }
         }
-
         hm_destroy(&hm);
-        // for_da_each(ptr, alloc_list) free(*ptr);
+        for_da_each(ptr, alloc_list) free(*ptr);
         da_destroy(&alloc_list);
         return 0;
 }
