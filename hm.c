@@ -85,7 +85,7 @@ hm_destroy(HM *hm)
 }
 
 static inline int
-rotl(int x, int r)
+hm_hash_rotl(int x, int r)
 {
         return (x << r) | (x >> (sizeof(int) * 8 - r));
 }
@@ -93,7 +93,8 @@ rotl(int x, int r)
 static int
 hm_hash(char *key, int bits)
 {
-        /* some fast hash implementation with low collision */
+        /* some fast hash implementation with low collision
+         * (copied from somewhere) */
         int h = 0x165667B1U;
         int len = strlen(key);
         h += len;
@@ -101,15 +102,15 @@ hm_hash(char *key, int bits)
         while (i + 4 <= len) {
                 int k = *(int *) (key + i);
                 k *= 0xC2B2AE3DU;
-                k = rotl(k, 17);
+                k = hm_hash_rotl(k, 17);
                 k *= 0x27D4EB2FU;
                 h ^= k;
-                h = rotl(h, 17) * 0x9E3779B1U + 0x27D4EB2FU;
+                h = hm_hash_rotl(h, 17) * 0x9E3779B1U + 0x27D4EB2FU;
                 i += 4;
         }
         while (i < len) {
                 h += key[i] * 0x165667B1U;
-                h = rotl(h, 11) * 0x9E3779B1U;
+                h = hm_hash_rotl(h, 11) * 0x9E3779B1U;
                 i++;
         }
         h ^= h >> 15;
@@ -180,8 +181,14 @@ hm_insert(HM *hm, char *key, void *value)
                 return;
         }
 
-        /* Same key or exceed max size */
-        if (!strcmp(hm->entries[hash]->key, key) || hm->d == HASH_MAX_BITS) {
+        /* Same key: replace */
+        if (strcmp(hm->entries[hash]->key, key) == 0) {
+                hm->entries[hash]->value = value;
+                return;
+        }
+
+        /* Exceed max size */
+        if (hm->d == HASH_MAX_BITS) {
                 Entry *e = hm->entries[hash];
                 while (e->next)
                         e = e->next;
@@ -206,9 +213,9 @@ hm_insert(HM *hm, char *key, void *value)
                         return hm_insert(hm, key, value);
                 }
                 hm->entries[hash2] = new_entry(hm->entries[hash1]->d);
-                /* Now at hash1 is the prev value at hash, if it is not in the correct place, swap with
-                 * the new entry created */
                 if (hm->hash(hm->entries[hash1]->key, hm->entries[hash1]->d) == hash2) {
+                        /* Now as hash1 is the prev value at hash, if it is not in the correct place, swap with
+                         * the new entry created */
                         Entry e = *hm->entries[hash2];
                         *hm->entries[hash2] = *hm->entries[hash1];
                         *hm->entries[hash1] = e;
@@ -326,7 +333,7 @@ main(void)
 {
         HM hm = { 0 };
         unsigned int i;
-        int iters = 1;
+        int iters = 10;
         srand(time(0));
         for (; iters--;) {
                 for (i = 0; i < 0x1 << HASH_MAX_BITS; i++)
