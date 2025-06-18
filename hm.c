@@ -17,6 +17,26 @@
 })
 #endif
 
+#define GENERIC_PRINT(X)                   \
+        do {                               \
+                printf(_Generic(X,         \
+                       char: "%c",         \
+                       int: "%d",          \
+                       unsigned int: "%u", \
+                       char *: "%s",       \
+                       double: "%f",       \
+                       void *: "%p"),      \
+                       X);                 \
+        } while (0)
+
+#define print_var_value(X)        \
+        do {                      \
+                printf(#X ": ");  \
+                GENERIC_PRINT(X); \
+                printf("\n");     \
+        } while (0)
+
+
 typedef struct Entry {
         int d;
         char *key;
@@ -137,16 +157,16 @@ static void
 print_table(HM hm)
 {
         int i = 0;
-        printf("+--------------------------------------------------------+\n");
-        printf("| Hash table                  | d = %-4d                 |\n", hm.d);
-        printf("|------------+----------------+----------------+---------|\n");
+        printf("+----------------------------------+--------------------------+\n");
+        printf("| Hash table                       | d = %-4d                 |\n", hm.d);
+        printf("|----+------------+----------------+----------------+---------|\n");
         for (; i < two_pow(hm.d); i++) {
                 Entry *e = hm.entries[i];
-                printf("|%-12b|%16s|  %14p| d = %-4d|\n", i, e->key, e->value, e->d);
+                printf("|%4d|%-12b|%16s|  %14p| d = %-4d|\n", i, i, e->key, e->value, e->d);
                 while ((e = e->next))
                         printf("|       list |%16s|  %14p| d = %-4d|\n", e->key, e->value, e->d);
         }
-        printf("+------------+----------------+----------------+---------+\n");
+        printf("+----+------------+----------------+----------------+---------+\n");
 }
 
 static HM *
@@ -201,25 +221,40 @@ hm_insert(HM *hm, char *key, void *value)
 
         /* Split entries */
         if (hm->entries[hash]->d < hm->d) {
-                int hash1 = hash;
-                int hash2 = hash ^ two_pow(hm->entries[hash]->d);
-                hm->entries[hash1]->d++;
+                int hash1 = hash & two_pow(hm->entries[hash]->d) - 1;
+                int hash2 = hash1 | two_pow(hm->entries[hash]->d);
 
-                if (hm->entries[hash1] != hm->entries[hash2]) {
-                        /* It should never be executed, but sometimes
-                         * it does for some reason. The following code
-                         * fix it. TEMP SOLUTION: TODO */
-                        hm_grow(hm);
-                        return hm_insert(hm, key, value);
-                }
+                assert(hm->entries[hash1] == hm->entries[hash2]);
+
+                hm->entries[hash1]->d++;
                 hm->entries[hash2] = new_entry(hm->entries[hash1]->d);
-                if (hm->hash(hm->entries[hash1]->key, hm->entries[hash1]->d) == hash2) {
-                        /* Now as hash1 is the prev value at hash, if it is not in the correct place, swap with
-                         * the new entry created */
-                        Entry e = *hm->entries[hash2];
-                        *hm->entries[hash2] = *hm->entries[hash1];
-                        *hm->entries[hash1] = e;
+
+                int padding = two_pow(hm->entries[hash1]->d);
+                int offset = (hash1 & hash2) & (padding / 2 - 1);
+
+                for (; offset < two_pow(hm->d); offset += padding) {
+                        hm->entries[offset] = hm->entries[hash1];
+                        hm->entries[offset + padding / 2] = hm->entries[hash2];
                 }
+
+                int h_old_e = hm->hash(hm->entries[hash1]->key, hm->entries[hash1]->d);
+
+                if (h_old_e == hash1) {
+                } else if (h_old_e == hash2) {
+                        Entry e = *hm->entries[h_old_e];
+                        *hm->entries[h_old_e] = *hm->entries[hash1];
+                        *hm->entries[hash1] = e;
+                } else {
+                        print_table(*hm);
+                        print_var_value(hash);
+                        print_var_value(hash1);
+                        print_var_value(hash2);
+                        printf("hash is neither hash1 nor hash2\n");
+                        exit(1);
+                }
+
+                assert(hm->entries[hash1] != hm->entries[hash2]);
+
                 /* Recursive call until it found an empty entry */
                 return hm_insert(hm, key, value);
         }
@@ -333,16 +368,21 @@ main(void)
 {
         HM hm = { 0 };
         unsigned int i;
-        int iters = 10;
+        int iters = 1;
         srand(time(0));
         for (; iters--;) {
-                for (i = 0; i < 0x1 << HASH_MAX_BITS; i++)
-                        test_single_insert(&hm, random_word(8), random_word(8));
+                for (i = 0; i < 256; i++)
+                        test_single_insert(&hm, random_word(24), random_word(24));
+                printf("Inserted elems: %d\n", i);
+                printf("Hash map size: %d\n", two_pow(hm.d));
+                printf("Used: %.1f%%\n", (float) i * 100 / two_pow(hm.d));
                 while (alloc_list.size) {
                         test_single_remove(&hm);
                 }
         }
+
         hm_destroy(&hm);
+
         for_da_each(ptr, alloc_list) free(*ptr);
         da_destroy(&alloc_list);
         return 0;
